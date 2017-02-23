@@ -25,7 +25,12 @@ class KaggleLabelClassifier:
 
     @staticmethod
     def get(filename):
-        return re.search(r'dog', filename) and 1 or 0
+        if re.search(r'dog', filename):
+            return 1
+        elif re.search(r'cat', filename):
+            return 0
+        else:
+            return 2
 
 
 class OxfordStanfordLabelClassifier:

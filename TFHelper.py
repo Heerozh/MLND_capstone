@@ -61,11 +61,13 @@ class Learner:
         self.drop = drop
         self.filename = filename
 
-    def fit(self, x_data, y_predict, vail_data, vail_labs):
-        label_len = functools.reduce(np.dot, y_predict.shape[1:])
-        image_height = x_data.shape[1]
-        image_width = x_data.shape[2]
-        num_channels = x_data.shape[3]
+    def fit(self, train_generator, vail_data, vail_labs):
+        x, y = next(train_generator)
+        batch_size = x.shape[0]
+        image_height = x.shape[1]
+        image_width = x.shape[2]
+        num_channels = x.shape[3]
+        label_len = functools.reduce(np.dot, y.shape[1:])
 
         self.graph = tf.Graph()
         with self.graph.as_default():
@@ -76,7 +78,7 @@ class Learner:
             tf_train_shaped = tf.reshape(self.tf_train_data,
                                          shape=[-1, image_height, image_width, num_channels])
             print(self.tf_train_data)
-            tf_train_labs = tf.placeholder(tf.float32, shape=(self.batch_size, label_len))
+            tf_train_labs = tf.placeholder(tf.float32, shape=(batch_size, label_len))
             tf_vail_data = tf.constant(vail_data)
 
             # Training computation.
@@ -99,20 +101,19 @@ class Learner:
             tf.global_variables_initializer().run()
             print('Initialized')
             for step in range(self.steps):
-                offset = (step * self.batch_size) % (y_predict.shape[0] - self.batch_size)
-                batch_data = x_data[offset:(offset + self.batch_size), :, :, :]
-                batch_labels = y_predict[offset:(offset + self.batch_size), :]
                 feed_dict = {
-                    self.tf_train_data: batch_data,
-                    tf_train_labs: batch_labels.reshape(self.batch_size, label_len),
+                    self.tf_train_data: x,
+                    tf_train_labs: y.reshape(batch_size, label_len),
                     self.tf_drop: self.drop,
                 }
                 _, l, train_p, vail_p = session.run(
                     [optimizer, loss, self.train_predict, vail_prediction], feed_dict=feed_dict)
 
+                x, y = next(train_generator)
+
                 if step % 50 == 0:
                     print('Minibatch loss at step %d: %f' % (step, l))
-                    print('Minibatch %s: %.1f' % self.func_accuracy(train_p, batch_labels))
+                    print('Minibatch %s: %.1f' % self.func_accuracy(train_p, y))
                     print('Test %s: %.1f' % self.func_accuracy(vail_p, vail_labs))
                     saver.save(session, './' + self.filename)
             print("Test %s: %.1f" % self.func_accuracy(vail_p, vail_labs))
