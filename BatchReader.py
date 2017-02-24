@@ -12,6 +12,7 @@ def preprocess_img(image_data, resize, gray=False):
         image_data = image_data[:, :, 0] * 0.2989 + \
                      image_data[:, :, 1] * 0.5870 + \
                      image_data[:, :, 2] * 0.114
+        image_data = image_data[:, :, None]
     image_data = (image_data / 255.) - .5
     return image_data
 
@@ -27,11 +28,7 @@ class ThreadImgProcess(threading.Thread):
         self.i = i
 
     def run(self):
-        while True:
-            img_bytes = self.archive.read(self.filename)
-            if len(img_bytes) > 0:  # wtf.. multi-threaded reads sometimes returned zero bytes.
-                break
-            print('cannot read file, retrying... ', self.filename)
+        img_bytes = self.archive.read(self.filename)
         buff = BytesIO()
         buff.write(img_bytes)
         buff.seek(0)
@@ -46,14 +43,31 @@ class BatchReader:
         self.read_list = read_list
         self.classifier = classifier
         self.count = len(read_list)
+        # self.raw_imgs = []
+        #
+        # def raw_read():
+        #     for file_i, v in enumerate(self.read_list):
+        #         if v[-1] == '/':
+        #             print('skip:',  v)
+        #             continue
+        #         img_bytes = self.archive.read(v)
+        #         buff = BytesIO()
+        #         buff.write(img_bytes)
+        #         buff.seek(0)
+        #         img = ndimage.imread(buff).astype(np.uint8)
+        #         self.raw_imgs.append(img)
+        #         cpu = threading.Thread(target=next_dat)
+        #
+
+    def labels(self):
+        labset = []
+        for v in self.read_list:
+            labset.append(self.classifier.get(v))
+        return labset
 
     def get_generator(self, batch_size=128, image_size=256, gray=False):
-        if gray:
-            dataset = np.ndarray(shape=(batch_size, image_size, image_size),
-                                 dtype=np.float32)
-        else:
-            dataset = np.ndarray(shape=(batch_size, image_size, image_size, 3),
-                                 dtype=np.float32)
+        dataset = np.ndarray(shape=(batch_size, image_size, image_size, not gray and 3 or 1),
+                             dtype=np.float32)
         labset = np.ndarray(shape=(batch_size, self.classifier.num),
                             dtype=np.float32)
 
@@ -61,9 +75,9 @@ class BatchReader:
 
         cnt = 0
         while True:
-            print('reading from beginning: ', self.read_list[0])
+            # print('reading from beginning: ', self.read_list[0])
             for file_i, v in enumerate(self.read_list):
-                if v[-1] == '/':
+                if v[-1] == '/' or v[-13:] == 'dog.10237.jpg':
                     print('skip:',  v)
                     continue
                 threads[cnt] = ThreadImgProcess(self.archive, image_size, gray,
