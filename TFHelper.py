@@ -2,7 +2,6 @@ import numpy as np
 import tensorflow as tf
 import functools
 import sys
-import threading
 
 # create tf weight and biases var pair
 def var(kernel_shape):
@@ -72,13 +71,8 @@ class Learner:
         self.filename = filename
 
     def fit_generator(self, train_generator, vail_data, vail_labs):
-        x, y = None, None
+        x, y = next(train_generator)
 
-        def next_dat():
-            nonlocal x, y
-            x, y = next(train_generator)
-
-        next_dat()
         print(x.shape)
         batch_size = x.shape[0]
         image_height = x.shape[1]
@@ -118,22 +112,16 @@ class Learner:
             tf.global_variables_initializer().run()
             print('Initialized')
             for step in range(self.steps):
-                gpux, gpuy = x, y
-                cpu = threading.Thread(target=next_dat)
-                cpu.start()
-
                 feed_dict = {
-                    self.tf_train_data: gpux,
-                    tf_train_labs: gpuy.reshape(batch_size, label_len),
+                    self.tf_train_data: x,
+                    tf_train_labs: y.reshape(batch_size, label_len),
                     self.tf_drop: self.drop,
                 }
                 _, l, train_p, vail_p = session.run(
                     [optimizer, loss, self.train_predict, vail_prediction], feed_dict=feed_dict)
 
-                cpu.join()
-
                 if step % 50 == 0:
-                    acck, accv = self.func_accuracy(train_p, gpuy)
+                    acck, accv = self.func_accuracy(train_p, y)
                     acctk, acctv = self.func_accuracy(vail_p, vail_labs)
                     step_info(step, self.steps, {
                         'loss': l,
@@ -143,6 +131,7 @@ class Learner:
                     saver.save(session, './' + self.filename)
                     if step % 200 == 0 and step != 0:
                         print("")
+                x, y = next(train_generator)
 
             print("\nTest %s: %.1f" % self.func_accuracy(vail_p, vail_labs))
 
