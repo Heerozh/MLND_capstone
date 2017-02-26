@@ -2,41 +2,76 @@ import numpy as np
 import tensorflow as tf
 import functools
 import sys
+from IPython.display import display, HTML
 
-# create tf weight and biases var pair
-def var(kernel_shape):
-    """weights biases var init"""
-    weight = tf.get_variable("weights", kernel_shape,
-                             initializer=tf.truncated_normal_initializer(stddev=0.1))
-    biases = tf.get_variable("biases", [kernel_shape[-1]],
-                             initializer=tf.constant_initializer(0.0))
-    return weight, biases
+TREE = []
+def add_display_tree(net):
+    TREE.append((net.name, str(net.get_shape().as_list()[1:])))
+def print_tree():
+    html = ["<table width=50%>"]
+    for row in TREE:
+        html.append("<tr>")
+        html.append("<td>{0}</td> <td>{1}</td>".format(*row))
+        html.append("</tr>")
+    html.append("</table>")
+    display(HTML(''.join(html)))
 
+class Layer:
+    # create tf weight and biases var pair
+    @staticmethod
+    def var(kernel_shape):
+        """weights biases var init"""
+        weight = tf.get_variable("weights", kernel_shape,
+                                 initializer=tf.truncated_normal_initializer(stddev=0.1))
+        biases = tf.get_variable("biases", [kernel_shape[-1]],
+                                 initializer=tf.constant_initializer(0.0))
+        return weight, biases
 
-# create Conv Layer Model
-def conv_relu(x_input, kernel_shape, pool=False, drop=None):
-    """build conv relu layer"""
-    weights, biases = var(kernel_shape)
-    conv = tf.nn.conv2d(x_input, weights, strides=[1, 1, 1, 1], padding='SAME')
-    print(conv)
-    rtn = tf.nn.relu(conv + biases)
-    if pool:
-        rtn = tf.nn.max_pool(rtn, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME')
-    if drop is not None and drop != 0.:
-        rtn = tf.nn.dropout(rtn, drop)
-    print(rtn)
-    return rtn
+    # create Conv Layer Model
+    @staticmethod
+    def conv_relu(x_input, kernel_shape ):
+        """build conv relu layer"""
+        weights, biases = Layer.var(kernel_shape)
+        conv = tf.nn.conv2d(x_input, weights, strides=[1, 1, 1, 1], padding='SAME')
+        add_display_tree(conv)
+        rtn = tf.nn.relu(conv + biases)
+        return rtn
 
+    @staticmethod
+    def pool(x_input):
+        rtn = tf.nn.max_pool(x_input, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME')
+        add_display_tree(rtn)
+        return rtn
 
-# relu layer
-def relu(x_input, kernel_shape, drop=None):
-    """build relu layer"""
-    weights, biases = var(kernel_shape)
-    rtn = tf.nn.relu(tf.matmul(x_input, weights) + biases)
-    if drop is not None and drop != 0.:
-        rtn = tf.nn.dropout(rtn, drop)
-    print(rtn)
-    return rtn
+    # relu layer
+    @staticmethod
+    def relu(x_input, out_size):
+        """build relu layer"""
+        shape = x_input.get_shape().as_list()
+        weights, biases = Layer.var([shape[1], out_size])
+        rtn = tf.nn.relu(tf.matmul(x_input, weights) + biases)
+        add_display_tree(rtn)
+        return rtn
+
+    @staticmethod
+    def drop(x_input, drop):
+        if drop is not None and drop != 0.:
+            rtn = tf.nn.dropout(x_input, drop)
+            add_display_tree(rtn)
+            return rtn
+        return x_input
+
+    @staticmethod
+    def flat(x_input):
+        shape = x_input.get_shape().as_list()
+        size = shape[1] * shape[2] * shape[3]
+        reshape = tf.reshape(x_input, [-1, size])
+        add_display_tree(reshape)
+        return reshape
+
+    @staticmethod
+    def split():
+        TREE.append(('---', '---'))
 
 
 # 打印步骤信息
@@ -88,16 +123,20 @@ class Learner:
             self.tf_train_data = tf.placeholder(tf.float32)
             tf_train_shaped = tf.reshape(self.tf_train_data,
                                          shape=[-1, image_height, image_width, num_channels])
-            print(self.tf_train_data)
+            add_display_tree(tf_train_shaped)
+
             tf_train_labs = tf.placeholder(tf.float32, shape=(batch_size, label_len))
             tf_vail_data = tf.constant(vail_data)
 
             # Training computation.
-            with tf.variable_scope("predict") as scope:
-                logits, self.train_predict = self.func_model(tf_train_shaped, drop=self.tf_drop)
-                print(logits)
+            with tf.variable_scope("model") as scope:
+                model = self.func_model(tf_train_shaped, drop=self.tf_drop)
+                logits = model['logits']
+                self.train_predict = model['predict']
+                add_display_tree(logits)
+                print_tree()
                 scope.reuse_variables()
-                _, vail_prediction = self.func_model(tf_vail_data, drop=None)
+                vail_prediction = self.func_model(tf_vail_data, drop=None)['predict']
 
             loss = self.func_loss(logits, tf_train_labs)
             # Optimizer.
@@ -117,10 +156,11 @@ class Learner:
                     tf_train_labs: y.reshape(batch_size, label_len),
                     self.tf_drop: self.drop,
                 }
-                _, l, train_p, vail_p = session.run(
-                    [optimizer, loss, self.train_predict, vail_prediction], feed_dict=feed_dict)
 
-                if step % 50 == 0:
+                if step % 50 == 0 or step == (self.steps - 1):
+                    _, l, train_p, vail_p = session.run(
+                        [optimizer, loss, self.train_predict, vail_prediction],
+                        feed_dict=feed_dict)
                     acck, accv = self.func_accuracy(train_p, y)
                     acctk, acctv = self.func_accuracy(vail_p, vail_labs)
                     step_info(step, self.steps, {
@@ -131,9 +171,9 @@ class Learner:
                     saver.save(session, './' + self.filename)
                     if step % 200 == 0 and step != 0:
                         print("")
+                else:
+                    session.run(optimizer, feed_dict=feed_dict)
                 x, y = next(train_generator)
-
-            print("\nTest %s: %.1f" % self.func_accuracy(vail_p, vail_labs))
 
     def predict(self, x_data):
         with tf.Session(graph=self.graph) as session:
