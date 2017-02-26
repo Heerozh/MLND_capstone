@@ -141,7 +141,7 @@ class Learner:
             loss = self.func_loss(logits, tf_train_labs)
             # Optimizer.
             decay_lr = tf.train.exponential_decay(self.learning_rate, global_step,
-                                                  self.steps, 0.5, staircase=True)
+                                                  self.steps, 0.2, staircase=True)
             optimizer = self.func_optimizer(decay_lr).minimize(loss)
 
         #########################
@@ -155,6 +155,7 @@ class Learner:
                     self.tf_train_data: x,
                     tf_train_labs: y.reshape(batch_size, label_len),
                     self.tf_drop: self.drop,
+                    global_step: step,
                 }
 
                 if step % 50 == 0 or step == (self.steps - 1):
