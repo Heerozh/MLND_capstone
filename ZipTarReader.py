@@ -24,6 +24,14 @@ class ZipReader(ArcBaseReader):
 
     def namelist(self):
         file_list = self.zip.namelist()
+        digits = re.compile(r'(\d+)')
+
+        def tokenize(filename):
+            return tuple(int(token) if match else token
+                         for token, match in
+                         ((fragment, digits.search(fragment))
+                          for fragment in digits.split(filename)))
+        file_list = sorted(file_list, key=tokenize)
         return file_list
 
     def read(self, fullname):

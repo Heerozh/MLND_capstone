@@ -16,13 +16,14 @@ def print_tree():
     html.append("</table>")
     display(HTML(''.join(html)))
 
+
 class Layer:
     # create tf weight and biases var pair
     @staticmethod
     def var(kernel_shape):
         """weights biases var init"""
         weight = tf.get_variable("weights", kernel_shape,
-                                 initializer=tf.truncated_normal_initializer(stddev=0.1))
+                                 initializer=tf.truncated_normal_initializer(stddev=0.08))
         biases = tf.get_variable("biases", [kernel_shape[-1]],
                                  initializer=tf.constant_initializer(0.0))
         return weight, biases
@@ -105,7 +106,7 @@ class Learner:
         self.drop = drop
         self.filename = filename
 
-    def fit_generator(self, train_generator, vail_data, vail_labs):
+    def fit_generator(self, train_generator, vail_data, vail_labs, restore=False):
         x, y = next(train_generator)
 
         print(x.shape)
@@ -121,6 +122,8 @@ class Learner:
             # Input data.
             self.tf_drop = tf.placeholder_with_default(tf.constant(0.), None)
             self.tf_train_data = tf.placeholder(tf.float32)
+            print(self.tf_drop)
+            print(self.tf_train_data)
             tf_train_shaped = tf.reshape(self.tf_train_data,
                                          shape=[-1, image_height, image_width, num_channels])
             add_display_tree(tf_train_shaped)
@@ -133,6 +136,7 @@ class Learner:
                 model = self.func_model(tf_train_shaped, drop=self.tf_drop)
                 logits = model['logits']
                 self.train_predict = model['predict']
+                print(self.train_predict)
                 add_display_tree(logits)
                 print_tree()
                 scope.reuse_variables()
@@ -149,6 +153,8 @@ class Learner:
         with tf.Session(graph=self.graph) as session:
             saver = tf.train.Saver()
             tf.global_variables_initializer().run()
+            if restore:
+                saver.restore(session, './' + self.filename)
             print('Initialized')
             for step in range(self.steps):
                 feed_dict = {
@@ -185,5 +191,21 @@ class Learner:
                 self.tf_drop: 1,
             }
             return session.run(self.train_predict, feed_dict=feed_dict)
+
+
+def load_and_predict( x_data, returnvar, filename):
+    graph = tf.Graph()
+    with graph.as_default():
+        # with tf.device("/gpu:0"):
+        saver = tf.train.import_meta_graph('./' + filename + ".meta")
+    with tf.Session(graph=graph) as session:
+        # with tf.device('/gpu:0'):
+        saver.restore(session, './' + filename)
+        # tf.global_variables_initializer().run()
+        feed_dict = {
+            'Placeholder:0': x_data,
+            'PlaceholderWithDefault:0': 1,
+        }
+        return session.run(returnvar, feed_dict=feed_dict)
 
 

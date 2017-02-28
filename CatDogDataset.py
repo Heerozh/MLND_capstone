@@ -61,7 +61,7 @@ def get_kaggle_reader(validation_pct=.2):
 
     return BatchReader.BatchReader(train_arc, train_file_list, KaggleLabelClassifier),\
         BatchReader.BatchReader(train_arc, vali_file_list, KaggleLabelClassifier),\
-        BatchReader.BatchReader(test_arc, test_arc.shuffled_namelist(), KaggleLabelClassifier)
+        BatchReader.BatchReader(test_arc, test_arc.namelist(), KaggleLabelClassifier)
 
 
 
