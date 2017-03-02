@@ -3,10 +3,11 @@ import tensorflow as tf
 import functools
 import sys
 from IPython.display import display, HTML
+import time
 
 TREE = []
-def add_display_tree(net):
-    TREE.append((net.name, str(net.get_shape().as_list()[1:])))
+def add_display_tree(net, add=''):
+    TREE.append((net.name + ' ' + str(add), str(net.get_shape().as_list()[1:])))
 def print_tree():
     html = ["<table width=50%>"]
     for row in TREE:
@@ -18,30 +19,32 @@ def print_tree():
 
 
 class Layer:
+    stddev = 0.08
     # create tf weight and biases var pair
     @staticmethod
     def var(kernel_shape):
         """weights biases var init"""
         weight = tf.get_variable("weights", kernel_shape,
-                                 initializer=tf.truncated_normal_initializer(stddev=0.08))
+                                 initializer=tf.truncated_normal_initializer(stddev=Layer.stddev))
         biases = tf.get_variable("biases", [kernel_shape[-1]],
                                  initializer=tf.constant_initializer(0.0))
         return weight, biases
 
     # create Conv Layer Model
     @staticmethod
-    def conv_relu(x_input, kernel_shape ):
+    def conv_relu(x_input, kernel_shape, stride=1, padding='SAME'):
         """build conv relu layer"""
         weights, biases = Layer.var(kernel_shape)
-        conv = tf.nn.conv2d(x_input, weights, strides=[1, 1, 1, 1], padding='SAME')
-        add_display_tree(conv)
+        conv = tf.nn.conv2d(x_input, weights, strides=[1, stride, stride, 1], padding=padding)
+        add_display_tree(conv, str(kernel_shape[:2]) +
+                         (stride > 1 and ' /' + str(stride) or ''))
         rtn = tf.nn.relu(conv + biases)
         return rtn
 
     @staticmethod
-    def pool(x_input):
-        rtn = tf.nn.max_pool(x_input, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME')
-        add_display_tree(rtn)
+    def pool(x_input, ksize=2):
+        rtn = tf.nn.max_pool(x_input, ksize=[1, ksize, ksize, 1], strides=[1, 2, 2, 1], padding='SAME')
+        add_display_tree(rtn, '/2')
         return rtn
 
     # relu layer
@@ -71,14 +74,24 @@ class Layer:
         return reshape
 
     @staticmethod
+    def avg_pool(x_input):
+        rtn = tf.nn.avg_pool(x_input,
+                             ksize=[1, x_input.get_shape().as_list()[1],
+                                    x_input.get_shape().as_list()[2], 1],
+                             strides=[1, 1, 1, 1], padding='VALID')
+        add_display_tree(rtn)
+        return rtn
+
+    @staticmethod
     def split():
         TREE.append(('---', '---'))
 
 
 # 打印步骤信息
-def step_info(step, total_step, scores):
+def step_info(step, total_step, scores, starttime):
     sys.stdout.write('\r--== Step: ' + str(step) + '/' + str(total_step) +
-                     ' (' + str(round(step / total_step * 100, 1)) + '%)' +
+                     ' (' + str(round(step / total_step * 100, 1)) + '%) ' +
+                     str(round(time.time() - starttime)) + 's' +
                      ' Score: ' + ', '.join("{!s} {!s}".format(key, val)
                                             for (key, val) in scores.items()) +
                      ' ==-- ')
@@ -126,7 +139,7 @@ class Learner:
             print(self.tf_train_data)
             tf_train_shaped = tf.reshape(self.tf_train_data,
                                          shape=[-1, image_height, image_width, num_channels])
-            add_display_tree(tf_train_shaped)
+            add_display_tree(tf_train_shaped, 'input')
 
             tf_train_labs = tf.placeholder(tf.float32, shape=(batch_size, label_len))
             tf_vail_data = tf.constant(vail_data)
@@ -144,9 +157,12 @@ class Learner:
 
             loss = self.func_loss(logits, tf_train_labs)
             # Optimizer.
-            decay_lr = tf.train.exponential_decay(self.learning_rate, global_step,
-                                                  self.steps, 0.2, staircase=True)
-            optimizer = self.func_optimizer(decay_lr).minimize(loss)
+            if self.learning_rate is None:
+                optimizer = self.func_optimizer().minimize(loss)
+            else:
+                decay_lr = tf.train.exponential_decay(self.learning_rate, global_step,
+                                                      self.steps, 0.2, staircase=True)
+                optimizer = self.func_optimizer(decay_lr).minimize(loss)
 
         #########################
 
@@ -154,8 +170,13 @@ class Learner:
             saver = tf.train.Saver()
             tf.global_variables_initializer().run()
             if restore:
-                saver.restore(session, './' + self.filename)
+                try:
+                    saver.restore(session, './' + self.filename)
+                except Exception as e:
+                    print('cannot restore model, start over: ', e)
+                    pass
             print('Initialized')
+            start = time.time()
             for step in range(self.steps):
                 feed_dict = {
                     self.tf_train_data: x,
@@ -174,10 +195,9 @@ class Learner:
                         'loss': l,
                         'train ' + acck: accv,
                         'vail ' + acctk: acctv,
-                    })
+                    }, start)
+                    start = time.time()
                     saver.save(session, './' + self.filename)
-                    if step % 200 == 0 and step != 0:
-                        print("")
                 else:
                     session.run(optimizer, feed_dict=feed_dict)
                 x, y = next(train_generator)

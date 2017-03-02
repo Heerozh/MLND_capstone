@@ -81,6 +81,7 @@ class BatchReader:
         self.dataset = np.ndarray(shape=(self.count, image_size, image_size, not gray and 3 or 1),
                                   dtype=np.float32)
 
+        iter = 0
         cur = 0
         while True:
             step = min(batch_size, len(self.dataset) - cur)
@@ -96,6 +97,8 @@ class BatchReader:
                 rtn_dat = np.vstack((rtn_dat, self.dataset[cur:end]))
                 rtn_lab = np.vstack((rtn_lab, self.labels[cur:end]))
                 cur = end
+                iter += 1
+                print('iter: ', iter)
             yield rtn_dat, rtn_lab
 
 

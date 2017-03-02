@@ -64,7 +64,9 @@ def get_kaggle_reader(validation_pct=.2):
         BatchReader.BatchReader(test_arc, test_arc.namelist(), KaggleLabelClassifier)
 
 
-
+def get_reader(filename):
+    arc = ZipTarReader.auto(filename)
+    return BatchReader.BatchReader(arc, arc.namelist(), KaggleLabelClassifier)
 
 
 
