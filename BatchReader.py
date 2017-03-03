@@ -1,9 +1,6 @@
 from scipy import ndimage
 from io import BytesIO
 import threading
-import time
-import gc
-import weakref
 import numpy as np
 import multiprocessing
 
